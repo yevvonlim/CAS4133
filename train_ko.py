@@ -7,11 +7,13 @@ from datasets import load_from_disk
 import loguru
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
+output_dir = "outputs-new-tokenizer-ko"
+
 
 def load_dataset():
     
     # Load the dataset
-    train_dataset = load_from_disk("/workspace/CAS4133/data/train_multi_lang")
+    train_dataset = load_from_disk("/workspace/CAS4133/data/ko_wiki_dataset/train_filtered")
     # Split into train and test sets
     test_dataset = load_from_disk("data/ko_wiki_dataset/test")
 
@@ -26,26 +28,30 @@ def prepare():
     dtype = None # None for auto detection. Bfloat16 for Ampere+ GPUs.
     load_in_4bit = True # Use 4bit quantization to reduce memory usage.
 
-    model, tokenizer = FastLanguageModel.from_pretrained(
+    model, old_tokenizer = FastLanguageModel.from_pretrained(
         model_name = "unsloth/Llama-3.2-1B-unsloth-bnb-4bit",
         max_seq_length = max_seq_length,
         dtype = dtype,
         load_in_4bit = load_in_4bit,
     )
-    tokenizer = AutoTokenizer.from_pretrained("/workspace/CAS4133/data/korean_tokenizer_new")
-     
+    tokenizer = AutoTokenizer.from_pretrained("/workspace/CAS4133/data/fused_ko_wiki_tok")
+
+
     model.resize_token_embeddings(
         new_num_tokens=len(tokenizer),
         pad_to_multiple_of=64,         
         mean_resizing=True
     )
+
+    
+
     model.config.bos_token_id = tokenizer.convert_tokens_to_ids("<|begin_of_text|>")
     model.config.eos_token_id = tokenizer.convert_tokens_to_ids("<|end_of_text|>")
     model.config.pad_token_id = tokenizer.pad_token_id
     model.tie_weights() 
     model = FastLanguageModel.get_peft_model(
         model,
-        r = 512,
+        r = 128,
         target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
                         "gate_proj", "up_proj", "down_proj",
                         "embed_tokens", "lm_head",], # Add for continual pretraining
@@ -71,7 +77,7 @@ def prepare():
         args = UnslothTrainingArguments(
             packing = True, # Use packing to increase gradient signal
             logging_steps = 50,
-            output_dir = "outputs-new-tokenizer-multi",
+            output_dir = output_dir,
             report_to = "wandb", # Use wandb for better logging or Set to None
             
             max_steps = 2500, # DO NOT EXCEED 2500 steps for this assignment
@@ -103,9 +109,9 @@ def main():
 
     # Train the model
     trainer.train()
-    trainer.save_model("outputs/llama3-2-1b-ye")
-    tokenizer.save_pretrained("outputs/llama3-2-1b-ye")
-    loguru.logger.info("Model and tokenizer saved to outputs/llama3-2-1b-ye")
+    trainer.save_model(f"{output_dir}/llama3-2-1b-ye")
+    tokenizer.save_pretrained(f"{output_dir}/llama3-2-1b-ye")
+    loguru.logger.info(f"Model and tokenizer saved to {output_dir}/llama3-2-1b-ye")
 
     # Evaluate the model
     eval_results = trainer.evaluate()

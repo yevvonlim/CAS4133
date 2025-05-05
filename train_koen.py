@@ -7,11 +7,13 @@ from datasets import load_from_disk
 import loguru
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
+output_dir = "outputs-new-tokenizer-ko-en-fused"
+
 
 def load_dataset():
     
     # Load the dataset
-    train_dataset = load_from_disk("/workspace/CAS4133/data/train_multi_lang")
+    train_dataset = load_from_disk("/workspace/CAS4133/data/ko_wiki_dataset/train_filtered")
     # Split into train and test sets
     test_dataset = load_from_disk("data/ko_wiki_dataset/test")
 
@@ -32,7 +34,7 @@ def prepare():
         dtype = dtype,
         load_in_4bit = load_in_4bit,
     )
-    tokenizer = AutoTokenizer.from_pretrained("/workspace/CAS4133/data/korean_tokenizer_new")
+    tokenizer = AutoTokenizer.from_pretrained("/workspace/CAS4133/data/ko_en_tokenizer_fused")
      
     model.resize_token_embeddings(
         new_num_tokens=len(tokenizer),
@@ -45,7 +47,7 @@ def prepare():
     model.tie_weights() 
     model = FastLanguageModel.get_peft_model(
         model,
-        r = 512,
+        r = 128,
         target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
                         "gate_proj", "up_proj", "down_proj",
                         "embed_tokens", "lm_head",], # Add for continual pretraining
@@ -71,7 +73,7 @@ def prepare():
         args = UnslothTrainingArguments(
             packing = True, # Use packing to increase gradient signal
             logging_steps = 50,
-            output_dir = "outputs-new-tokenizer-multi",
+            output_dir = output_dir,
             report_to = "wandb", # Use wandb for better logging or Set to None
             
             max_steps = 2500, # DO NOT EXCEED 2500 steps for this assignment
@@ -103,9 +105,9 @@ def main():
 
     # Train the model
     trainer.train()
-    trainer.save_model("outputs/llama3-2-1b-ye")
-    tokenizer.save_pretrained("outputs/llama3-2-1b-ye")
-    loguru.logger.info("Model and tokenizer saved to outputs/llama3-2-1b-ye")
+    trainer.save_model(f"{output_dir}/llama3-2-1b-ye")
+    tokenizer.save_pretrained(f"{output_dir}/llama3-2-1b-ye")
+    loguru.logger.info(f"Model and tokenizer saved to {output_dir}/llama3-2-1b-ye")
 
     # Evaluate the model
     eval_results = trainer.evaluate()

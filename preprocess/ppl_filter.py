@@ -53,27 +53,27 @@ def main():
     # Ensure reproducibility
     set_seed(1)
 
-    # Use all GPUs if available
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    loguru.logger.info(f"Using device: {device}")
+    # # Use all GPUs if available
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # loguru.logger.info(f"Using device: {device}")
 
-    # Load model & tokenizer
-    model_name = "Qwen/Qwen3-4B"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=torch.float16,  # FP16 for memory & speed
-    ).to(device)
+    # # Load model & tokenizer
+    # model_name = "Qwen/Qwen3-4B"
+    # tokenizer = AutoTokenizer.from_pretrained(model_name)
+    # model = AutoModelForCausalLM.from_pretrained(
+    #     model_name,
+    #     torch_dtype=torch.float16,  # FP16 for memory & speed
+    # ).to(device)
 
-    # Wrap in DataParallel to leverage all GPUs
-    if torch.cuda.device_count() > 1:
-        loguru.logger.info(f"Found {torch.cuda.device_count()} GPUs → enabling DataParallel")
-        model = torch.nn.DataParallel(model)
-    model.eval()
+    # # Wrap in DataParallel to leverage all GPUs
+    # if torch.cuda.device_count() > 1:
+    #     loguru.logger.info(f"Found {torch.cuda.device_count()} GPUs → enabling DataParallel")
+    #     model = torch.nn.DataParallel(model)
+    # model.eval()
 
 
     # ===============================================
-    thr = 500
+    thr = 100
     dataset_path = "/workspace/CAS4133/data/korean-archive-dataset"
     # ===============================================
 
@@ -81,23 +81,23 @@ def main():
 
 
 
-    # Load dataset
-    dataset = load_from_disk(dataset_path)
-    dataloader = DataLoader(dataset, batch_size=8*8*2, collate_fn=collate_fn)
+    # # Load dataset
+    # dataset = load_from_disk(dataset_path)
+    # dataloader = DataLoader(dataset, batch_size=8*8*2, collate_fn=collate_fn)
 
-    # Compute perplexities
-    ppl_list = compute_ppl(dataloader, model, tokenizer, device)
+    # # Compute perplexities
+    # ppl_list = compute_ppl(dataloader, model, tokenizer, device)
 
-    # Release model GPU memory
-    model.to("cpu")
-    del model
-    torch.cuda.empty_cache()
-    gc.collect()
+    # # Release model GPU memory
+    # model.to("cpu")
+    # del model
+    # torch.cuda.empty_cache()
+    # gc.collect()
 
-    # Attach PPL column and save
-    dataset = dataset.add_column("ppl", ppl_list)
-    dataset.save_to_disk(os.path.join(dataset_path, "train_with_ppl"))
-    # dataset = load_from_disk(os.path.join(dataset_path, "train_with_ppl"))
+    # # Attach PPL column and save
+    # dataset = dataset.add_column("ppl", ppl_list)
+    # dataset.save_to_disk(os.path.join(dataset_path, "train_with_ppl"))
+    dataset = load_from_disk(os.path.join(dataset_path, "train_with_ppl"))
     loguru.logger.info("✅ Saved train_with_ppl")
 
     # Filter out high-perplexity samples and save

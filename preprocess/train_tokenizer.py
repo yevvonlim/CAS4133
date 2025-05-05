@@ -1,48 +1,55 @@
-from transformers import AutoTokenizer 
+"""
+Re‑trains a tokenizer on a domain corpus and writes it to `--output_dir`.
+Base tokenizer is taken from any HF model (defaults to UnsLoTH Llama‑3.2‑1B).
+
+Usage
+-----
+python tokenizer_training.py \
+    --dataset_path /workspace/CAS4133/data/tokenizer_train \
+    --output_dir   /workspace/CAS4133/data/korean_tokenizer 
+"""
+import argparse
+from transformers import AutoTokenizer
 from datasets import load_from_disk
-import loguru
+from loguru import logger
 
-def prepare_tokenizer(model_name_or_path):
-    """
-    Load the tokenizer from the specified model name or path.
-    """
-    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
-    return tokenizer
 
-def prepare_dataset(dataset_path):
-    """
-    Load the dataset from the specified path.
-    """
+def prepare_tokenizer(model_name_or_path: str):
+    """Load the *base* tokenizer that will supply special tokens etc."""
+    return AutoTokenizer.from_pretrained(model_name_or_path, use_fast=True)
+
+
+def training_corpus_iter(dataset, chunk_size: int = 1000):
+    """Yield slices of text so that `train_new_from_iterator` streams efficiently."""
+    for i in range(0, len(dataset), chunk_size):
+        yield dataset[i : i + chunk_size]["text"]
+
+
+def train_tokenizer(base_tokenizer, dataset_path: str, output_dir: str, vocab_size: int = 30_000):
     dataset = load_from_disk(dataset_path)
-    training_corpus = (
-        dataset[i : i + 1000]["text"]
-        for i in range(0, len(dataset), 1000)
-    )
-    return training_corpus
+    logger.info(f"Loaded dataset at {dataset_path} → {len(dataset):,} rows")
 
-def train_tokenizer(tokenizer, dataset, output_dir):
-    training_corpus = prepare_dataset(dataset)
-    loguru.logger.info("training corpus loaded")
-    # Train the tokenizer on the training corpus
-    loguru.logger.info("training tokenizer")
-    new_tokenizer = tokenizer.train_new_from_iterator(training_corpus, 
-                                                      vocab_size=128_000,  # to prevent oov
-                                                    )
-    loguru.logger.info("tokenizer trained")
-    # Save the tokenizer to the specified output directory
-    new_tokenizer.save_pretrained(output_dir)
-    loguru.logger.info(f"tokenizer saved to {output_dir}")
+    logger.info("Training tokenizer …")
+    new_tokenizer = base_tokenizer.train_new_from_iterator(
+        training_corpus_iter(dataset), vocab_size=vocab_size
+    )
+
+    # fuse tokenizer
+    old_vocab      = set(base_tokenizer.get_vocab())   
+    new_vocab      = set(new_tokenizer.get_vocab())
+    tokens_to_add  = [t for t in new_vocab if t not in old_vocab]
+
+    base_tokenizer.add_tokens(tokens_to_add)
+    base_tokenizer.save_pretrained(output_dir)
+    logger.success(f"Tokenizer written to {output_dir}")
+
 
 if __name__ == "__main__":
-    # Specify the model name or path and the dataset path
-    model_name_or_path = "unsloth/Llama-3.2-1B-unsloth-bnb-4bit"
-    dataset_path = "/workspace/CAS4133/data/tokenizer_train"
-    output_dir = "data/korean_tokenizer"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base_model", default="unsloth/Llama-3.2-1B-unsloth-bnb-4bit")
+    parser.add_argument("--dataset_path", required=True)
+    parser.add_argument("--output_dir", default="korean_tokenizer")
+    args = parser.parse_args()
 
-    # Prepare the tokenizer and dataset
-    tokenizer = prepare_tokenizer(model_name_or_path)
-    loguru.logger.info("tokenizer loaded")
-    
-    # Train the tokenizer
-    train_tokenizer(tokenizer, dataset_path, output_dir)
-
+    tokenizer = prepare_tokenizer(args.base_model)
+    train_tokenizer(tokenizer, args.dataset_path, args.output_dir)
