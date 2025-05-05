@@ -5,12 +5,13 @@ import torch
 from utils import set_seed
 from datasets import load_from_disk
 import loguru
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
 def load_dataset():
     
     # Load the dataset
-    train_dataset = load_from_disk("data/ko_wiki_dataset/train_filtered")
+    train_dataset = load_from_disk("/workspace/CAS4133/data/train_multi_lang")
     # Split into train and test sets
     test_dataset = load_from_disk("data/ko_wiki_dataset/test")
 
@@ -21,7 +22,7 @@ def prepare():
     set_seed(1)
     train_dataset, test_dataset = load_dataset()
 
-    max_seq_length = 2048
+    max_seq_length = 1024
     dtype = None # None for auto detection. Bfloat16 for Ampere+ GPUs.
     load_in_4bit = True # Use 4bit quantization to reduce memory usage.
 
@@ -31,13 +32,19 @@ def prepare():
         dtype = dtype,
         load_in_4bit = load_in_4bit,
     )
-
+    tokenizer = AutoTokenizer.from_pretrained("/workspace/CAS4133/data/korean_tokenizer")
+     
+    model.resize_token_embeddings(
+        new_num_tokens=len(tokenizer),
+        pad_to_multiple_of=64,         
+        mean_resizing=True
+    )
+    model.tie_weights() 
     model = FastLanguageModel.get_peft_model(
         model,
         r = 128,
         target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
                         "gate_proj", "up_proj", "down_proj",
-
                         "embed_tokens", "lm_head",], # Add for continual pretraining
         lora_alpha = 32,
         lora_dropout = 0, # Supports any, but = 0 is optimized
@@ -47,6 +54,7 @@ def prepare():
         use_rslora = True,   # For rank stabilized LoRA
         loftq_config = None,
     )
+    
 
     trainer = UnslothTrainer(
         model = model,
@@ -58,9 +66,9 @@ def prepare():
         dataset_num_proc = 48,
 
         args = UnslothTrainingArguments(
-            
+            packing = True, # Use packing to increase gradient signal
             logging_steps = 50,
-            output_dir = "outputs",
+            output_dir = "outputs-new-tokenizer-multi",
             report_to = "wandb", # Use wandb for better logging or Set to None
             
             max_steps = 2500, # DO NOT EXCEED 2500 steps for this assignment

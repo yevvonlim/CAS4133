@@ -7,6 +7,7 @@ from tqdm.auto import tqdm
 import loguru
 import gc
 from utils import set_seed
+import os 
 
 def compute_ppl(dataloader, model, tokenizer, device):
     """
@@ -70,8 +71,18 @@ def main():
         model = torch.nn.DataParallel(model)
     model.eval()
 
+
+    # ===============================================
+    thr = 500
+    dataset_path = "/workspace/CAS4133/data/korean-archive-dataset"
+    # ===============================================
+
+
+
+
+
     # Load dataset
-    dataset = load_from_disk("data/ko_wiki_dataset/train")
+    dataset = load_from_disk(dataset_path)
     dataloader = DataLoader(dataset, batch_size=8*8*2, collate_fn=collate_fn)
 
     # Compute perplexities
@@ -85,16 +96,16 @@ def main():
 
     # Attach PPL column and save
     dataset = dataset.add_column("ppl", ppl_list)
-    dataset.save_to_disk("data/ko_wiki_dataset/train_with_ppl")
-    # dataset = load_from_disk("data/ko_wiki_dataset/train_with_ppl")
+    dataset.save_to_disk(os.path.join(dataset_path, "train_with_ppl"))
+    # dataset = load_from_disk(os.path.join(dataset_path, "train_with_ppl"))
     loguru.logger.info("✅ Saved train_with_ppl")
 
     # Filter out high-perplexity samples and save
     before = len(dataset)
-    filtered = dataset.filter(lambda x: x["ppl"] < 500, num_proc=8)
+    filtered = dataset.filter(lambda x: x["ppl"] < thr, num_proc=128)
     after = len(filtered)
-    loguru.logger.info(f"Filtered {before} → {after} samples (PPL < 500)")
-    filtered.save_to_disk("data/ko_wiki_dataset/train_filtered")
+    loguru.logger.info(f"Filtered {before} → {after} samples (PPL < {thr})")
+    filtered.save_to_disk(os.path.join(dataset_path, "train_filtered"))
     loguru.logger.info("✅ Saved train_filtered")
 
 if __name__ == "__main__":

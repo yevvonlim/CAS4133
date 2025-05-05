@@ -25,7 +25,9 @@ def train_tokenizer(tokenizer, dataset, output_dir):
     loguru.logger.info("training corpus loaded")
     # Train the tokenizer on the training corpus
     loguru.logger.info("training tokenizer")
-    new_tokenizer = tokenizer.train_new_from_iterator(training_corpus, 52000)
+    new_tokenizer = tokenizer.train_new_from_iterator(training_corpus, 
+                                                      vocab_size=128_000,  # to prevent oov
+                                                    )
     loguru.logger.info("tokenizer trained")
     # Save the tokenizer to the specified output directory
     new_tokenizer.save_pretrained(output_dir)
